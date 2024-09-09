@@ -13,32 +13,47 @@ app.use(cors({
         'http://localhost:5174',
         'http://localhost:5175'
     ],
-    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 200
 }));
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wj0pjif.mongodb.net/?retryWrites=true&w=majority`;
+// MongoDB connection (persistent)
+let cachedClient = null;
+let cachedDb = null;
 
-const client = new MongoClient(uri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-    },
-});
+async function connectToDatabase() {
+    if (cachedDb) {
+        return { client: cachedClient, db: cachedDb };
+    }
+    const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wj0pjif.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+    const client = new MongoClient(uri, {
+        serverApi: {
+            version: ServerApiVersion.v1,
+            strict: true,
+            deprecationErrors: true,
+        },
+    });
+
+    await client.connect();
+    cachedClient = client;
+    cachedDb = client.db('QuickBazaarDB');
+    console.log("Connected to MongoDB successfully!");
+    return { client, db: cachedDb };
+}
 
 async function run() {
     try {
         // Connect the client to the server
-        await client.connect();
-        console.log("Connected to MongoDB");
+        const { db } = await connectToDatabase();
 
         // Collections
-        const categoryCollection = client.db("QuickBazaarDB").collection("categories");
-        const productsCollection = client.db("QuickBazaarDB").collection("products");
-        const sortCollection = client.db("QuickBazaarDB").collection("sorts");
-        const commentCollection = client.db("QuickBazaarDB").collection("comment");
-        const addProductsCollection = client.db("QuickBazaarDB").collection("addProducts");
+        const categoryCollection = db.collection("categories");
+        const productsCollection = db.collection("products");
+        const sortCollection = db.collection("sorts");
+        const commentCollection = db.collection("comment");
+        const addProductsCollection = db.collection("addProducts");
 
         // Category related API
         app.get('/category', async (req, res) => {
@@ -183,13 +198,13 @@ async function run() {
         });
 
         // Ping to confirm the connection
-        await client.db("admin").command({ ping: 1 });
+        await cachedClient.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. Successfully connected to MongoDB!");
     } catch (error) {
         console.error('Error connecting to MongoDB:', error);
     } finally {
         // Optionally close the client connection when finished
-        // await client.close();
+        // await cachedClient.close();
     }
 }
 
@@ -197,7 +212,7 @@ run().catch(console.dir);
 
 // Root route
 app.get('/', (req, res) => {
-    res.send('Quick Bazaar Server is running');
+    res.send('Quick Bazaar Server');
 });
 
 // Start the server
